@@ -10,16 +10,15 @@ resources:
           spec:
             client: "3"
             dependencies:
-              - "../${var.data_science_project_library}"
-              - "../${var.mlops_project_library}"
+              - "../../${var.data_science_project_library}"
+              - "../../${var.mlops_project_library}"
       
       tasks:
         - task_key: start_setup
           environment_key: default
           spark_python_task:
-            python_file: "../scripts/start_setup.py"
+            python_file: "../../scripts/start_setup.py"
             parameters:
-              parameters:
               - --runtime_env
               - "${var.run_time_env}"
               - --yml_task
@@ -42,11 +41,12 @@ resources:
               - '{% raw %}{{job.run_id}}{% endraw %}' # do not change this
         
         - task_key: extract_data
+          depends_on:
+            - task_key: start_setup
           environment_key: default
           spark_python_task:
-            python_file: "../scripts/data_extraction.py"
+            python_file: "../../scripts/data_extraction.py"
             parameters:
-              parameters:
               - --runtime_env
               - "${var.run_time_env}"
               - --yml_task
@@ -69,28 +69,29 @@ resources:
               - '{% raw %}{{job.run_id}}{% endraw %}' # do not change this
         
         - task_key: end_setup
-            environment_key: default
-            spark_python_task:
-              python_file: "../scripts/end_setup.py"
-              parameters:
-                parameters:
-                - --runtime_env
-                - "${var.run_time_env}"
-                - --yml_task
-                - "end.yml"
-                - --project_name
-                - "{{ project }}"
-                - --model_name
-                - "{{ model }}"
-                - --stage_name
-                - "common"
-                - --task_key
-                - '{% raw %}{{task.name}}{% endraw %}' # do not change this
-                - --task_run_id
-                - '{% raw %}{{task.run_id}}{% endraw %}' # do not change this
-                - --job_name
-                - '{% raw %}{{job.name}}{% endraw %}' # do not change this
-                - --job_id
-                - '{% raw %}{{job.id}}{% endraw %}' # do not change this
-                - --job_run_id
-                - '{% raw %}{{job.run_id}}{% endraw %}' # do not change this
+          depends_on:
+            - task_key: extract_data
+          environment_key: default
+          spark_python_task:
+            python_file: "../../scripts/end_setup.py"
+            parameters:
+              - --runtime_env
+              - "${var.run_time_env}"
+              - --yml_task
+              - "end.yml"
+              - --project_name
+              - "{{ project }}"
+              - --model_name
+              - "{{ model }}"
+              - --stage_name
+              - "common"
+              - --task_key
+              - '{% raw %}{{task.name}}{% endraw %}' # do not change this
+              - --task_run_id
+              - '{% raw %}{{task.run_id}}{% endraw %}' # do not change this
+              - --job_name
+              - '{% raw %}{{job.name}}{% endraw %}' # do not change this
+              - --job_id
+              - '{% raw %}{{job.id}}{% endraw %}' # do not change this
+              - --job_run_id
+              - '{% raw %}{{job.run_id}}{% endraw %}' # do not change this

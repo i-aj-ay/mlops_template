@@ -34,9 +34,6 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.dynamic]
-version = { attr = "adm_provisioner.__version__" }
-
 [dependency-groups]
 dev = [
     "pytest>=9.0.1",

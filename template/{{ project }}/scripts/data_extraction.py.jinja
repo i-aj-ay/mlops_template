@@ -99,7 +99,7 @@ def main():
     yml_task = args.yml_task
     project_name = args.project_name
     model_name = args.model_name
-    stage_name = stage_name
+    stage_name = args.stage_name
     task_key = args.task_key
     task_run_id = args.task_run_id
     job_name = args.job_name
@@ -117,7 +117,7 @@ def main():
 
     # load and render task YAML
     process_config = load_task_config(
-        project_name=project_name, pipeline_name=pipeline_name, env_context=env_context, which_file=yml_task
+        project_name=project_name, model_name=model_name, stage_name=stage_name, env_context=env_context, which_file=yml_task
     )
     actions_config = process_config.get("actions", [])
 
