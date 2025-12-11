@@ -28,6 +28,8 @@ resources:
               - "{{ project }}"
               - --model_name
               - "{{ model }}"
+              - --stage_name
+              - "common"
               - --task_key
               - '{% raw %}{{task.name}}{% endraw %}' # do not change this
               - --task_run_id
@@ -48,11 +50,13 @@ resources:
               - --runtime_env
               - "${var.run_time_env}"
               - --yml_task
-              - "start.yml"
+              - "data.yml"
               - --project_name
               - "{{ project }}"
               - --model_name
               - "{{ model }}"
+              - --stage_name
+              - "training"
               - --task_key
               - '{% raw %}{{task.name}}{% endraw %}' # do not change this
               - --task_run_id
@@ -73,11 +77,13 @@ resources:
                 - --runtime_env
                 - "${var.run_time_env}"
                 - --yml_task
-                - "start.yml"
+                - "end.yml"
                 - --project_name
                 - "{{ project }}"
                 - --model_name
                 - "{{ model }}"
+                - --stage_name
+                - "common"
                 - --task_key
                 - '{% raw %}{{task.name}}{% endraw %}' # do not change this
                 - --task_run_id

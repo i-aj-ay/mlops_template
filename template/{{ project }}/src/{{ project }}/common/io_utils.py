@@ -61,6 +61,7 @@ def cleanup_pipeline_setup(spark, func_conf):
         [
             StructField("project_name", StringType(), True),
             StructField("model_name", StringType(), True),
+            StructField("stage_name", StringType(), True),
             StructField("task_name", StringType(), True),
             StructField("task_run_id", StringType(), True),
             StructField("job_name", StringType(), True),

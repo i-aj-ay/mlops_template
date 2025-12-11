@@ -12,3 +12,10 @@ actions:
         project_name: {{ project }}
         model_name: {{ model }}
         process_name: {{ model }}_data
+        source_data_type: databricks_table # file/databricks_table
+        databricks_table:
+          table_name: catalog.schema.table
+        target_details:
+          # target is always databricks
+          # ensure that the resources are created before running
+          table_name: catalog.schema.table # define your details in config.toml file
