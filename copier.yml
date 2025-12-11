@@ -6,7 +6,7 @@ _templates_suffix: .jinja
 _subdirectory: template
 _overwrite: true
 
-_repo: "https://github.com/mohammedsameeruddin-blk/mlops_template"
+_repo: "https://github.com/i-aj-ay/mlops_template"
 _revision: feature/project_template
 
 # Project info
