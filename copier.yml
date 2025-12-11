@@ -1,0 +1,53 @@
+# Answers file (must be at the very top)
+_answers_file: ".copier-answers.yml"
+
+_min_copier_version: '9'
+_templates_suffix: .jinja
+_subdirectory: template
+_overwrite: true
+
+_repo: "https://github.com/mohammedsameeruddin-blk/mlops_template"
+_revision: feature/project_template
+
+# Project info
+project:
+  type: str
+  help: "Enter data science project name (e.g., blk-customer)"
+
+# Ask every time to create a new model onboarding pipeline
+model:
+  type: str
+  help: "Enter new model name (e.g., customer)"
+
+user_email:
+  type: str
+  help: "Enter user_email (e.g., you@example.com)"
+
+dev_host:
+  type: str
+  help: "Please provide the databricks `DEV` host."
+
+qa_host:
+  type: str
+  help: "Please provide the databricks `QA` host."
+  default: ""
+
+prod_host:
+  type: str
+  help: "Please provide the databricks `PROD` host."
+  default: ""
+
+# Force overwrite these files to merge pipelines
+_force:
+  - src/{{ model }}/**
+  - workflow_jobs/{{ model }}/wf_{{ model }}_inference.yml
+  - workflow_jobs/{{ model }}/wf_{{ model }}_retraining.yml
+  - workflow_jobs/{{ model }}/wf_{{ model }}_training.yml
+
+_skip_if_exists:
+  - databricks.yml
+  - MANIFEST.in
+  - pyproject.toml
+
+overwrite: true
+update: true
