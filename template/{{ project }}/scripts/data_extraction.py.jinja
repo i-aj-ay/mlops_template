@@ -3,13 +3,14 @@ import os
 import argparse
 from datetime import datetime
 from pyspark.sql import SparkSession
-
 from loguru import logger
 
 from {{ project }}.common.config_utils import (
     load_project_config,
     load_task_config
 )
+from {{ project }}.common.audit_utils import write_to_table
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -116,17 +117,22 @@ def main():
         raise ValueError(f"Environment '{runtime_env}' not found in config.toml")
 
     # load and render task YAML
-    process_config = load_task_config(
+    task_config = load_task_config(
         project_name=project_name, model_name=model_name, stage_name=stage_name, env_context=env_context, which_file=yml_task
     )
-    actions_config = process_config.get("actions", [])
-
+    placeholder_audit_table = f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
+    audit_table = task_config.get("audit_table", placeholder_audit_table)
+    if audit_table.startswith("."):
+        audit_table = placeholder_audit_table
+    
+    actions_config = task_config.get("actions", [])
     for aconf in actions_config:
         func_conf = aconf["functions"]
         module_file_path = func_conf["module_file_path"]
         module_path, func_name = module_file_path.split(":")
         module = importlib.import_module(module_path)
         func = getattr(module, func_name)
+        process_name = func_conf["kwargs"]["process_name"]
 
         run_status = ""
         error_details = ""
@@ -142,6 +148,24 @@ def main():
             logger.error(f"Failure: {error_details}")
         end_time = datetime.now()
         duration_minutes = round((end_time - start_time).total_seconds() / 60, 2)
+
+        audit_metrics = dict(
+            project_name=project_name,
+            model_name=model_name,
+            stage_name=stage_name
+            task_name=task_key,
+            process_name=process_name,
+            task_run_id=task_run_id,
+            job_name=job_name,
+            job_id=job_id,
+            job_run_id=job_run_id,
+            run_status=run_status,
+            start_time=str(start_time),
+            end_time=str(end_time),
+            duration=str(duration_minutes),
+            error_details=error_details,
+        )
+        write_to_table(spark, audit_metrics, audit_table):
 
         logger.success("Data extraction completed successfully.")
     

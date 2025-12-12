@@ -1,64 +1,100 @@
 import os
-import requests
+import shutil
 import json
+import pandas as pd
+
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    StringType,
+    DoubleType,
+    TimestampType,
+)
+from pyspark.sql.functions import col
 from loguru import logger
 
 
-class CollectMetrics:
-    def __init__(
-        self,
-        project_name,
-        model_name,
-        stage_name,
-        task_name,
-        task_run_id,
-        job_name,
-        job_id,
-        job_run_id,
-        run_status,
-        start_time,
-        end_time,
-        duration,
-        error_details,
-        file_path,
-    ):
-        self.project_name = project_name
-        self.model_name = model_name
-        self.stage_name = stage_name
-        self.task_name = task_name
-        self.task_run_id = task_run_id
-        self.job_name = job_name
-        self.job_id = job_id
-        self.job_run_id = job_run_id
-        self.run_status = run_status
-        self.start_time = start_time
-        self.end_time = end_time
-        self.duration = duration
-        self.error_details = error_details
-        self.file_path = file_path
+def is_table_exists(spark, table_name):
+    try:
+        spark.table(table_name)
+        return True
+    except Exception as e:
+        return False
 
-    def log_metrics(self, write_to_file=True):
-        metrics = {
-            "project_name": self.project_name,
-            "model_name": self.model_name,
-            "stage_name": self.stage_name,
-            "task_name": self.task_name,
-            "task_run_id": self.task_run_id,
-            "job_name": self.job_name,
-            "job_id": self.job_id,
-            "job_run_id": self.job_run_id,
-            "run_status": self.run_status,
-            "start_time": self.start_time,
-            "end_time": self.end_time,
-            "duration_mins": self.duration,
-            "error_details": self.error_details,
-        }
-        if write_to_file:
-            # TODO:
-            # 1. Add more output stages - files to process
-            if self.task_name in ["extract_data", "preprocess_data"]:
-                with open(file=self.file_path, mode="w") as fp:
-                    json.dump(obj=metrics, fp=fp, indent=2)
-                logger.info(f"{self.task_name}, task metrics written successfully.")
-        else:
-            logger.info("Skipped collecting task metrics.")
+
+def setup_project_audit_table(spark, func_conf):
+    project_name = func_conf["kwargs"]["project_name"]
+    model_name = func_conf["kwargs"]["model_name"]
+    audit_table_name = func_conf["kwargs"].get(
+        "audit_table", f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
+    )
+    if audit_table_name.startswith("."):
+        audit_table_name = f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
+
+    audit_schema = StructType(
+        [
+            StructField("project_name", StringType(), True),
+            StructField("model_name", StringType(), True),
+            StructField("stage_name", StringType(), True),
+            StructField("task_name", StringType(), True),
+            StructField("process_name", StringType(), True),
+            StructField("task_run_id", StringType(), True),
+            StructField("job_name", StringType(), True),
+            StructField("job_id", StringType(), True),
+            StructField("job_run_id", StringType(), True),
+            StructField("run_status", StringType(), True),
+            StructField("start_time", StringType(), True),
+            StructField("end_time", StringType(), True),
+            StructField("duration_mins", StringType(), True),
+            StructField("error_details", StringType(), True),
+        ]
+    )
+
+    if is_table_exists(audit_table_name):
+        logger.info(f"Table '{audit_table_name}' already exists. Skipping creation.")
+    else:
+        logger.info(f"Table '{audit_table_name}' does not exist. Creating table.")
+        audit_df = spark.createDataFrame([], audit_schema)
+        audit_df.write.format("delta").mode("overwrite").saveAsTable(f"{audit_table_name}")
+
+    return True
+
+
+def write_to_audit_table(spark, audit_metrics, func_conf, audit_table=None):
+    project_name = func_conf["kwargs"]["project_name"]
+    model_name = func_conf["kwargs"]["model_name"]
+    if not audit_table:
+        audit_table = f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
+
+    records = [audit_metrics]
+
+    audit_schema = StructType(
+        [
+            StructField("project_name", StringType(), True),
+            StructField("model_name", StringType(), True),
+            StructField("stage_name", StringType(), True),
+            StructField("task_name", StringType(), True),
+            StructField("process_name", StringType(), True),
+            StructField("task_run_id", StringType(), True),
+            StructField("job_name", StringType(), True),
+            StructField("job_id", StringType(), True),
+            StructField("job_run_id", StringType(), True),
+            StructField("run_status", StringType(), True),
+            StructField("start_time", StringType(), True),
+            StructField("end_time", StringType(), True),
+            StructField("duration_mins", StringType(), True),
+            StructField("error_details", StringType(), True),
+        ]
+    )
+
+    if records:
+        df = spark.createDataFrame(data=records, schema=audit_schema)
+        df = df.orderBy(col("start_time"), col("task_name"))
+        df.write.mode("append").saveAsTable(audit_table)
+        logger.info(f"Audit metrics appended successfully - `{audit_table}`.")
+    else:
+        logger.warning(
+            f"No metrics found to append."
+        )
+
+    return True
