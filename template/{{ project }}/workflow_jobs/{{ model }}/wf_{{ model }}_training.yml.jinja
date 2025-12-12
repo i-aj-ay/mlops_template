@@ -28,7 +28,7 @@ resources:
               - --model_name
               - "{{ model }}"
               - --stage_name
-              - "common"
+              - "training"
               - --task_key
               - '{% raw %}{{task.name}}{% endraw %}' # do not change this
               - --task_run_id
@@ -84,7 +84,7 @@ resources:
               - --model_name
               - "{{ model }}"
               - --stage_name
-              - "common"
+              - "training"
               - --task_key
               - '{% raw %}{{task.name}}{% endraw %}' # do not change this
               - --task_run_id
