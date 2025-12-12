@@ -9,7 +9,7 @@ from {{ project }}.common.config_utils import (
     load_project_config,
     load_task_config
 )
-from {{ project }}.common.audit_utils import write_to_table
+from {{ project }}.common.audit_utils import write_to_audit_table
 
 
 def main():
@@ -152,7 +152,7 @@ def main():
         audit_metrics = dict(
             project_name=project_name,
             model_name=model_name,
-            stage_name=stage_name
+            stage_name=stage_name,
             task_name=task_key,
             process_name=process_name,
             task_run_id=task_run_id,
@@ -163,9 +163,9 @@ def main():
             start_time=str(start_time),
             end_time=str(end_time),
             duration=str(duration_minutes),
-            error_details=error_details,
+            error_details=error_details
         )
-        write_to_table(spark, audit_metrics, audit_table):
+        write_to_audit_table(spark, audit_metrics, audit_table)
 
         logger.success("Data extraction completed successfully.")
     
