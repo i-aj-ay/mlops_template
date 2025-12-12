@@ -29,6 +29,8 @@ def setup_project_audit_table(spark, func_conf):
         "audit_table", f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
     )
     if audit_table_name.startswith("."):
+        logger.warning("`AUDIT_TARGET_CATALOG` is not specified in `config.toml`.")
+        logger.info("Cretaing the audit table in `hive_metastore`.")
         audit_table_name = f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
 
     audit_schema = StructType(
@@ -64,6 +66,8 @@ def write_to_audit_table(spark, audit_metrics, func_conf, audit_table=None):
     project_name = func_conf["kwargs"]["project_name"]
     model_name = func_conf["kwargs"]["model_name"]
     if not audit_table:
+        logger.warning("`AUDIT_TARGET_CATALOG` is not specified in `config.toml`.")
+        logger.info("Saving the audit details in `hive_metastore`.")
         audit_table = f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
 
     records = [audit_metrics]
