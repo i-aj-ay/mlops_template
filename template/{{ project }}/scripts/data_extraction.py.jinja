@@ -165,7 +165,7 @@ def main():
             duration=str(duration_minutes),
             error_details=error_details
         )
-        write_to_audit_table(spark, audit_metrics, audit_table)
+        write_to_audit_table(spark, audit_metrics, func_conf, audit_table)
 
         logger.success("Data extraction completed successfully.")
     
