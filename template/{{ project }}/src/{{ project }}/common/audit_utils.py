@@ -52,7 +52,7 @@ def setup_project_audit_table(spark, func_conf):
         ]
     )
 
-    if is_table_exists(audit_table_name):
+    if is_table_exists(spark, audit_table_name):
         logger.info(f"Table '{audit_table_name}' already exists. Skipping creation.")
     else:
         logger.info(f"Table '{audit_table_name}' does not exist. Creating table.")
