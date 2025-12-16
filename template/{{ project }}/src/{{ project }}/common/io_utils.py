@@ -37,7 +37,7 @@ def setup_project_output_path(spark, func_conf):
 
         return True
     
-    logger.info("Now volumes path provided.")
+    logger.warning("No volumes path provided.")
 
 
 def cleanup_pipeline_setup(spark, func_conf):
@@ -98,4 +98,4 @@ def cleanup_pipeline_setup(spark, func_conf):
 
         return True
     
-    logger.info("Now volumes path provided.")
+    logger.warning("No volumes path provided.")
