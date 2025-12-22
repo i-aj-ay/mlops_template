@@ -1,0 +1,18 @@
+# change as per the requirement
+version: '1.0'
+stage: data_featurization
+file: featurization.yml # same as current filename; do not change this
+actions:
+  - name: passenger_featurization
+    enable: true
+    functions:
+      class_path: <data_science_module_file_path>:BaseFeature
+      kwargs:
+        project_name: {{ project }}
+        model_name: {{ model }}
+        process_name: {{ model }}_featurization
+        source_data_type: file
+        file:
+          file_path: /data/preprocessing/data_preprocessing.csv
+          impute_path: impute/passenger_impute.pkl
+          encode_path: encode/passenger_encode.pkl

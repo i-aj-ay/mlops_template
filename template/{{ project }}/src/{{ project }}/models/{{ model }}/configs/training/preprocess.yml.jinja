@@ -1,14 +1,17 @@
 # change as per the requirement
 
 version: '1.0'
-stage: training
+stage: pre_processing
 file: preprocess.yml # same as current filename; do not change this
 actions:
-  - name: data_featurization
+  - name: data_preprocessing
     enable: true
     functions:
-      module_file_path: <data_science_module_file_path>
+      class_path: <data_science_module_file_path>:DataPreprocess
       kwargs:
         project_name: {{ project }}
         model_name: {{ model }}
         process_name: {{ model }}_preprocess
+        source_data_type: databricks_table # file/databricks_table
+        databricks_table:
+          table: <table_path from catalog>

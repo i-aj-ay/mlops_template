@@ -1,0 +1,172 @@
+import argparse
+import importlib
+from datetime import datetime
+from pathlib import Path
+
+import joblib
+import mlflow
+import pandas as pd
+from loguru import logger
+from networkx import config
+from pyspark.sql import SparkSession
+from sklearn import impute
+
+from {{ project }}.common.config_utils import load_project_config, load_task_config
+
+
+def load_class(class_path: str):
+    module_path, class_name = class_path.split(":")
+    module = importlib.import_module(module_path)
+    return getattr(module, class_name)
+
+
+def load_data_from_file(root_path, file_path):
+    logger.info(f"Loading data from file: {file_path}")
+    file_path = Path(root_path) / file_path.lstrip("/")
+    df = pd.read_csv(filepath_or_buffer=file_path, index_col=0)
+    return df
+
+
+def set_mlflow_experiment(
+    root_path,
+    stage_name,
+):
+    experiment_name = f"{root_path}/{stage_name}"
+
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        experiment_id = mlflow.create_experiment(experiment_name)
+        logger.info(
+            f"Created MLflow experiment '{experiment_name}' (ID={experiment_id})"
+        )
+    else:
+        experiment_id = experiment.experiment_id
+        logger.info(
+            f"Found existing MLflow experiment: {experiment_name} (ID={experiment_id})"
+        )
+
+    return experiment_id
+
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--root_path", required=True)
+    parser.add_argument("--runtime_env", required=True)
+    parser.add_argument("--yml_task", required=True)
+    parser.add_argument("--project_name", required=True)
+    parser.add_argument("--model_name", required=True)
+    parser.add_argument("--stage_name", required=True)
+    parser.add_argument("--task_key", required=True)
+    parser.add_argument("--task_run_id", required=True)
+    parser.add_argument("--job_name", required=True)
+    parser.add_argument("--job_id", required=True)
+    parser.add_argument("--job_run_id", required=True)
+
+    args = parser.parse_args()
+
+    experiment_id = set_mlflow_experiment(args.root_path, args.stage_name)
+
+    env_context = load_project_config(
+        project_name=args.project_name,
+        env_name=args.runtime_env.lower(),
+    )
+
+    process_config = load_task_config(
+        project_name=args.project_name,
+        model_name=args.model_name,
+        stage_name=args.stage_name,
+        env_context=env_context,
+        which_file=args.yml_task,
+    )
+
+    actions_config = process_config.get("actions", [])
+
+    base_output_dir = Path(args.root_path) / "data" / "featurization"
+    base_output_dir.mkdir(parents=True, exist_ok=True)
+
+    for action in actions_config:
+        if not action.get("enable", True):
+            continue
+
+        action_name = action["name"]
+        func_conf = action["functions"]
+
+        logger.info(f"Starting action: {action_name}")
+        start_time = datetime.now()
+
+        try:
+            with mlflow.start_run(
+                run_name=action_name, experiment_id=experiment_id, nested=True
+            ) as mlflow_run:
+                mlflow.set_tag("runtime_env", args.runtime_env)
+                mlflow.log_param("task_key", args.task_key)
+                cls = load_class(func_conf["class_path"])
+
+                func_kwargs = func_conf["kwargs"]
+                source_type = func_kwargs.get("source_data_type")
+
+                source_info = func_kwargs.get("file") if source_type == "file" else {}
+
+                file_path = source_info.get("file_path")
+                impute_file_path = source_info.get("impute_path")
+                encode_file_path = source_info.get("encode_path")
+
+                df = load_data_from_file(
+                    root_path=args.root_path,
+                    file_path=file_path,
+                )
+
+                feature = cls()
+
+                output = feature.apply(df)
+
+                output_df = output.get("dataframe")
+                impute_dict = output.get("impute_dict")
+                encoder = output.get("encoder")
+
+                # TODO: output should always be csv, but we can extend this later
+                output_path = base_output_dir
+                logger.info(f"Writing output to {output_path}")
+                output_df.to_csv(output_path / f"{action_name}.csv", index=False)
+
+                row_count = len(output_df)
+                col_count = len(output_df.columns)
+
+                mlflow.log_metric("rows", row_count)
+                mlflow.log_metric("columns", col_count)
+                mlflow.log_param("action_name", action_name)
+
+                # Save imputer and encoder objects
+                impute_output_path = output_path / impute_file_path
+                impute_output_path.parent.mkdir(parents=True, exist_ok=True)
+                joblib.dump(impute_dict, impute_output_path)
+
+                encode_output_path = output_path / encode_file_path
+                encode_output_path.parent.mkdir(parents=True, exist_ok=True)
+                joblib.dump(encoder, encode_output_path)
+
+                mlflow.log_artifacts(
+                    str(base_output_dir), artifact_path="featurization"
+                )
+
+                run_status = "SUCCESS"
+
+        except Exception as e:
+            logger.exception(f"Action failed: {action_name}")
+            run_status = "FAILED"
+            mlflow.log_param("failure_reason", str(e))
+            raise
+
+        finally:
+            duration = round((datetime.now() - start_time).total_seconds() / 60, 2)
+            logger.info(
+                f"Action {action_name} finished | Status={run_status} | Duration={duration} min"
+            )
+
+    logger.success("All preprocessing actions completed successfully.")
+    return True
+
+
+if __name__ == "__main__":
+    main()

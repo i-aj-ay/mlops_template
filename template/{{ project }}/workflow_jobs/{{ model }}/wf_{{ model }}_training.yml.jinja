@@ -67,10 +67,72 @@ resources:
               - '{% raw %}{{job.id}}{% endraw %}' # do not change this
               - --job_run_id
               - '{% raw %}{{job.run_id}}{% endraw %}' # do not change this
+
+
+        - task_key: data_preprocessing
+          depends_on:
+            - task_key: extract_data
+          environment_key: default
+          spark_python_task:
+            python_file: "../../scripts/data_preprocessing.py"
+            parameters:
+              - --root_path
+              - ${workspace.root_path}
+              - --runtime_env
+              - "${var.run_time_env}"
+              - --yml_task
+              - "preprocess.yml"
+              - --project_name
+              - "{{ project }}"
+              - --model_name
+              - "{{ model }}"
+              - --stage_name
+              - "training"
+              - --task_key
+              - '{% raw %}{{task.name}}{% endraw %}' # do not change this
+              - --task_run_id
+              - '{% raw %}{{task.run_id}}{% endraw %}' # do not change this
+              - --job_name
+              - '{% raw %}{{job.name}}{% endraw %}' # do not change this
+              - --job_id
+              - '{% raw %}{{job.id}}{% endraw %}' # do not change this
+              - --job_run_id
+              - '{% raw %}{{job.run_id}}{% endraw %}' # do not change this
+
+
+        - task_key: data_featurization
+          depends_on:
+            - task_key: data_preprocessing
+          environment_key: default
+          spark_python_task:
+            python_file: "../../scripts/data_featurization.py"
+            parameters:
+              - --root_path
+              - ${workspace.root_path}
+              - --runtime_env
+              - "${var.run_time_env}"
+              - --yml_task
+              - "featurization.yml"
+              - --project_name
+              - "{{ project }}"
+              - --model_name
+              - "{{ model }}"
+              - --stage_name
+              - "training"
+              - --task_key
+              - '{% raw %}{{task.name}}{% endraw %}' # do not change this
+              - --task_run_id
+              - '{% raw %}{{task.run_id}}{% endraw %}' # do not change this
+              - --job_name
+              - '{% raw %}{{job.name}}{% endraw %}' # do not change this
+              - --job_id
+              - '{% raw %}{{job.id}}{% endraw %}' # do not change this
+              - --job_run_id
+              - '{% raw %}{{job.run_id}}{% endraw %}' # do not change this
         
         - task_key: end_setup
           depends_on:
-            - task_key: extract_data
+            - task_key: data_featurization
           environment_key: default
           spark_python_task:
             python_file: "../../scripts/end_setup.py"
