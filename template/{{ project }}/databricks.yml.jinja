@@ -11,15 +11,15 @@ variables:
   mlops_project_library:
     default: ./dist/{{ project }}-1.0.0-py3-none-any.whl
 
+  data_science_project_library:
+    default: ./ds_backend/*.whl
+  
   run_time_env:
     default: dev
     description: run_time_env argument to workflow
 
   project_file_root_path:
     default: ${workspace.file_path}/src
-
-  data_science_project_library:
-    default: ./ds_backend/*.whl
 
   spark_version:
     default: 15.4.x-scala2.12
@@ -45,7 +45,7 @@ sync:
 targets:
   dev:
     mode: development
-    default: false
+    default: true
     workspace:
       host: {{ dev_host }}
       root_path: /Workspace/Users/{{ user_email }}/.bundle/${bundle.name}/${bundle.target}
@@ -54,7 +54,7 @@ targets:
 
   qa:
     mode: production
-    default: true
+    default: false
     workspace:
       host: {{ qa_host if qa_host else dev_host }}
       root_path: /Workspace/Users/{{ user_email }}/.bundle/${bundle.name}/${bundle.target}

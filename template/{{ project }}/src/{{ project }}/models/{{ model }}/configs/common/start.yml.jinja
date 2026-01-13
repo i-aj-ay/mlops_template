@@ -3,11 +3,12 @@
 version: '1.0'
 file: start.yml # same as current filename; do not change this
 stage: common
+mlflow_experiment_name: {{ model }}
 actions:
   - name: start_setup
     enable: true
     functions:
-      module_file_path: {{ project }}.common.audit_utils:setup_project_audit_table
+      module_file_path: {{ project }}.common.utils.audit_utils:setup_project_audit_table
       kwargs:
         project_name: {{ project }}
         model_name: {{ model }}

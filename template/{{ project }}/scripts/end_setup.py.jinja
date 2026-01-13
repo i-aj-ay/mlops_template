@@ -3,6 +3,7 @@ import os
 import argparse
 from datetime import datetime
 from pyspark.sql import SparkSession
+from pyspark.dbutils import DBUtils
 
 from loguru import logger
 
@@ -11,90 +12,25 @@ from {{ project }}.common.config_utils import (
     load_task_config
 )
 
-def main():
+
+def main(spark):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--runtime_env",
-        type=str,
-        metavar="runtime_env",
-        required=True,
-        help="Runtime environment name (e.g., dev, qa, prod)",
-    )
-
-    parser.add_argument(
-        "--yml_task",
-        type=str,
-        metavar="yml_task",
-        required=True,
-        help="Respective YAML task",
-    )
-
-    parser.add_argument(
-        "--project_name",
-        type=str,
-        metavar="project_name",
-        required=True,
-        help="Respective project name",
-    )
-
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        metavar="model_name",
-        required=True,
-        help="Respective model name",
-    )
-
-    parser.add_argument(
-        "--stage_name",
-        type=str,
-        metavar="stage_name",
-        required=True,
-        help="Respective stage name",
-    )
-
-    parser.add_argument(
-        "--task_key",
-        type=str,
-        metavar="task_key",
-        required=True,
-        help="Respective task name of the pipeline",
-    )
-
-    parser.add_argument(
-        "--task_run_id",
-        type=str,
-        metavar="task_run_id",
-        required=True,
-        help="Respective task runid of the pipeline",
-    )
-
-    parser.add_argument(
-        "--job_name",
-        type=str,
-        metavar="job_name",
-        required=True,
-        help="Respective job name of the pipeline",
-    )
-
-    parser.add_argument(
-        "--job_id",
-        type=str,
-        metavar="job_id",
-        required=True,
-        help="Respective jobid of the pipeline",
-    )
-
-    parser.add_argument(
-        "--job_run_id",
-        type=str,
-        metavar="job_run_id",
-        required=True,
-        help="Respective job runid of the pipeline",
-    )
+    parser.add_argument("--root_path", required=True)
+    parser.add_argument("--runtime_env", required=True)
+    parser.add_argument("--yml_task", required=True)
+    parser.add_argument("--project_name", required=True)
+    parser.add_argument("--model_name", required=True)
+    parser.add_argument("--stage_name", required=True)
+    parser.add_argument("--task_key", required=True)
+    parser.add_argument("--task_run_id", required=True)
+    parser.add_argument("--job_name", required=True)
+    parser.add_argument("--job_id", required=True)
+    parser.add_argument("--job_run_id", required=True)
+    parser.add_argument("--experiment_id", required=True)
 
     args = parser.parse_args()
+    root_path = args.root_path
     runtime_env = args.runtime_env.lower()
     yml_task = args.yml_task
     project_name = args.project_name
@@ -105,8 +41,7 @@ def main():
     job_name = args.job_name
     job_id = args.job_id
     job_run_id = args.job_run_id
-
-    spark = SparkSession.builder.getOrCreate()
+    experiment_id = args.experiment_id
 
     # load config from TOML based on runtime_env
     env_context = load_project_config(
@@ -128,9 +63,9 @@ def main():
         module = importlib.import_module(module_path)
         func = getattr(module, func_name)
 
+        start_time = datetime.now()
         run_status = ""
         error_details = ""
-        start_time = datetime.now()
         try:
             # assumes 'spark' is provided by Databricks environment
             result = func(spark=spark, func_conf=func_conf)
@@ -140,13 +75,18 @@ def main():
             run_status = "FAILED"
             error_details = str(e)
             logger.error(f"Failure: {error_details}")
-        end_time = datetime.now()
-        duration_minutes = round((end_time - start_time).total_seconds() / 60, 2)
+        finally:
+            end_time = datetime.now()
+            duration_minutes = round((end_time - start_time).total_seconds() / 60, 2)
 
-        logger.success(f"Ended the setup for {stage_name}; {project_name} - {model_name}")
+            logger.success(f"Ended the setup for {stage_name}; {project_name} - {model_name}")
     
-    return True
+    return experiment_id
 
 
 if __name__ == "__main__":
-    main()
+    spark = SparkSession.builder.getOrCreate()
+    dbutils = DBUtils(spark)
+
+    experiment_id = main(spark=spark)
+    dbutils.jobs.taskValues.set(key="experiment_id", value=experiment_id)

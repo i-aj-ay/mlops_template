@@ -17,11 +17,14 @@ authors = [
 dependencies = [
     "setuptools",
     "pyyaml==6.0.2",
-    "loguru",
     "jinja2==3.1.6",
     "python_benedict==0.34.1",
     "pandas==2.3.0",
     "toml==0.10.2",
+    "loguru>=0.7.3",
+    "mlflow>=3.7.0",
+    "{{ model }}",
+    "joblib>=1.5.3",
 ]
 
 [project.urls]
@@ -33,6 +36,9 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv.sources]
+{{ model }} = { path = "ds_backend/{{ model }}-1.0.0-py3-none-any.whl" }
 
 [dependency-groups]
 dev = [

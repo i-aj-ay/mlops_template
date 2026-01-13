@@ -1,13 +1,13 @@
 # do not change it
 
 version: '1.0'
-file: start.yml # same as current filename; do not change this
+file: end.yml # same as current filename; do not change this
 stage: common
 actions:
   - name: end_setup
     enable: true
     functions:
-      module_file_path: {{ project }}.common.io_utils:cleanup_pipeline_setup
+      module_file_path: {{ project }}.common.utils.io_utils:cleanup_pipeline_setup
       kwargs:
         project_name: {{ project }}
         model_name: {{ model }}
