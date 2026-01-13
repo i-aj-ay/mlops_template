@@ -3,19 +3,27 @@
 version: '1.0'
 stage: training
 file: data.yml # same as current filename; do not change this
+audit_table: "{% raw %}{{ env.AUDIT_TARGET_CATALOG }}.{{ env.AUDIT_TARGET_SCHEMA }}.{{ env.AUDIT_TARGET_TABLE }}{% endraw %}"
 actions:
   - name: data_extraction
     enable: true
     functions:
-      module_file_path: {{ project }}.common.data_loader:load_data
+      module_file_path: {{ project }}.common.data.data_loader:load_data
       kwargs:
         project_name: {{ project }}
         model_name: {{ model }}
         process_name: {{ model }}_data
-        source_data_type: databricks_table # file/databricks_table
-        databricks_table:
-          table_name: catalog.schema.table
-        target_details:
-          # target is always databricks
-          # ensure that the resources are created before running
-          table_name: catalog.schema.table # define your details in config.toml file
+        source_data_type: databricks_table
+        target_data_type: databricks_table
+        inputs:
+          # currently supports file/databricks_table
+          file:
+            data:
+            pipeline:
+          databricks_table: catalog.schema.table
+        outputs:
+          # currently supports file/databricks_table
+          file:
+            data:
+            pipeline:
+          databricks_table: catalog.schema.table

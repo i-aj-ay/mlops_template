@@ -1,15 +1,19 @@
 import argparse
 import importlib
+import mlflow
+import os
 from datetime import datetime
 from pathlib import Path
 
-import mlflow
 from loguru import logger
 from pyspark.sql import SparkSession
-from {{ project }}.common.config_utils import (
-    load_project_config,
+from pyspark.dbutils import DBUtils
+
+from {{ project }}.common.utils.config_utils import (
+    load_project_config, 
     load_task_config
 )
+from {{ project }}.common.utils.audit_utils import write_to_audit_table
 
 
 def load_class(class_path: str):
@@ -22,32 +26,18 @@ def load_data_from_table(spark, table_path):
     logger.info(f"Loading data from table: {table_path}")
     data = spark.sql(f"SELECT * FROM {table_path}")
     df = data.toPandas()
-    df.dropna(inplace=True)
     return df
 
 
-def set_mlflow_experiment(
-    root_path,
-    stage_name,
-):
-    experiment_name = f"{root_path}/{stage_name}"
-
-    experiment = mlflow.get_experiment_by_name(experiment_name)
-    if experiment is None:
-        experiment_id = mlflow.create_experiment(experiment_name)
-        logger.info(
-            f"Created MLflow experiment '{experiment_name}' (ID={experiment_id})"
-        )
-    else:
-        experiment_id = experiment.experiment_id
-        logger.info(
-            f"Found existing MLflow experiment: {experiment_name} (ID={experiment_id})"
-        )
-
-    return experiment_id
+def log_params_with_prefix(params: dict, prefix: str):
+    mlflow.log_params({
+        f"{prefix}.{k}": v
+        for k, v in params.items()
+        if v is not None
+    })
 
 
-def main():
+def main(spark):
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--root_path", required=True)
@@ -61,103 +51,168 @@ def main():
     parser.add_argument("--job_name", required=True)
     parser.add_argument("--job_id", required=True)
     parser.add_argument("--job_run_id", required=True)
+    parser.add_argument("--experiment_id", required=True)
 
     args = parser.parse_args()
-
-    experiment_id = set_mlflow_experiment(args.root_path, args.stage_name)
-
-    spark = SparkSession.builder.getOrCreate()
+    root_path = args.root_path
+    runtime_env = args.runtime_env.lower()
+    yml_task = args.yml_task
+    project_name = args.project_name
+    model_name = args.model_name
+    stage_name = args.stage_name
+    task_key = args.task_key
+    task_run_id = args.task_run_id
+    job_name = args.job_name
+    job_id = args.job_id
+    job_run_id = args.job_run_id
+    experiment_id = args.experiment_id
 
     env_context = load_project_config(
-        project_name=args.project_name,
-        env_name=args.runtime_env.lower(),
+        project_name=project_name,
+        env_name=runtime_env,
     )
 
-    process_config = load_task_config(
-        project_name=args.project_name,
-        model_name=args.model_name,
-        stage_name=args.stage_name,
+    task_config = load_task_config(
+        project_name=project_name,
+        model_name=model_name,
+        stage_name=stage_name,
         env_context=env_context,
-        which_file=args.yml_task,
+        which_file=yml_task,
     )
+    placeholder_audit_table = f"hive_metastore.default.mlops_{project_name}_{model_name}_audit_tbl"
+    audit_table = task_config.get("audit_table", placeholder_audit_table)
+    if audit_table.startswith("."):
+        logger.warning("`AUDIT_TARGET_CATALOG` is not specified in `config.toml`.")
+        logger.info("Saving the audit details in `hive_metastore`.")
+        audit_table = placeholder_audit_table
+    
+    with mlflow.start_run(
+        run_name="data_preprocessing",
+        experiment_id=experiment_id,
+        nested=True
+    ):
+        actions_config = task_config.get("actions", [])
+        for action in actions_config:
+            if not action.get("enable", True):
+                continue
 
-    actions_config = process_config.get("actions", [])
+            action_name = action["name"]
+            func_conf = action["functions"]
+            process_name = func_conf["kwargs"]["process_name"]
 
-    base_output_dir = Path(args.root_path) / "data" / "preprocessing"
-    base_output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Starting action: {action_name}")
+            
+            start_time = datetime.now()
+            run_status = ""
+            error_details = ""
 
-    for action in actions_config:
-        if not action.get("enable", True):
-            continue
-
-        action_name = action["name"]
-        func_conf = action["functions"]
-
-        logger.info(f"Starting action: {action_name}")
-        start_time = datetime.now()
-
-        try:
             with mlflow.start_run(
-                run_name=action_name, experiment_id=experiment_id, nested=True
-            ) as mlflow_run:
-                mlflow.set_tag("runtime_env", args.runtime_env)
-                mlflow.log_param("task_key", args.task_key)
-                cls = load_class(func_conf["class_path"])
+                run_name=action_name,
+                experiment_id=experiment_id,
+                nested=True
+            ):
+                try:
+                    cls = load_class(func_conf["class_path"])
+                    func_kwargs = func_conf["kwargs"]
+                    
+                    # Source logging
+                    source_type = func_kwargs.get("source_data_type")
+                    mlflow.log_param(
+                        key="source_data_type",
+                        value=source_type,
+                    )
+                    if source_type == "databricks_table":
+                        source_table_name = func_kwargs["inputs"]["databricks_table"]
+                        df = load_data_from_table(
+                            spark=spark,
+                            table_path=source_table_name,
+                        )
+                        mlflow.log_param(
+                            key=source_type,
+                            value=source_table_name,
+                        )
+                    else:
+                        # file
+                        source_info = func_kwargs["inputs"]["file"]
+                        log_params_with_prefix(params=source_info, prefix="source.file")
+                    
+                    # Target logging
+                    target_type = func_kwargs.get("target_data_type")
+                    mlflow.log_param(
+                        key="target_data_type",
+                        value=target_type,
+                    )
+                    if target_type == "databricks_table":
+                        mlflow.log_param(
+                            key="target",
+                            value=func_kwargs["outputs"]["databricks_table"],
+                        )
+                    else:
+                        # file
+                        target_info = func_kwargs["outputs"]["file"]
+                        log_params_with_prefix(params=target_info, prefix="target.file")
+                    
+                    # Class object creation
+                    preprocessor = cls(config=func_kwargs, data=df)
+                    output_df = preprocessor.run()
 
-                func_kwargs = func_conf["kwargs"]
-                source_type = func_kwargs.get("source_data_type")
+                    if target_type == "file":
+                        # TODO: output should always be csv, but we can extend this later
+                        base_output_dir = os.path.join(root_path, stage_name)
+                        file_output_dir = "/".join(target_info["data"].split("/")[:-1]).lstrip("/")
+                        output_path = Path(base_output_dir) / file_output_dir
+                        output_path.mkdir(parents=True, exist_ok=True)
+                        preprocess_path = Path(base_output_dir) / target_info["data"].lstrip("/")
+                        logger.info(f"Writing output to {output_path}")
+                        mlflow.log_param(key=f"target_file_path", value=preprocess_path)
+                        output_df.to_csv(preprocess_path, index=False)
+                    else:
+                        # databricks_table
+                        pass
 
-                # TODO: add other source types like files or something.
-                source_info = (
-                    func_kwargs.get("databricks_table")
-                    if source_type == "databricks_table"
-                    else {}
-                )
-                # TODO: Here we need to handle accordingly.
-                table_path = source_info.get("table")
+                    run_status = "SUCCESS"
 
-                df = load_data_from_table(
-                    spark,
-                    table_path,
-                )
+                except Exception as e:
+                    run_status = "FAILED"
+                    error_details = str(e)
+                    logger.error(f"Action failed: {action_name}")
+                    raise
 
-                preprocessor = cls(config=func_kwargs, data=df)
+                finally:
+                    end_time = datetime.now()
+                    duration_minutes = round((end_time - start_time).total_seconds() / 60, 2)
 
-                output_df = preprocessor.run()
+                    mlflow.log_metric("duration_minutes", duration_minutes)
+                    mlflow.set_tag("run_status", run_status)
 
-                # TODO: output should always be csv, but we can extend this later
-                output_path = base_output_dir
-                logger.info(f"Writing output to {output_path}")
-                output_df.to_csv(output_path / f"{action_name}.csv", index=False)
+                    audit_metrics = dict(
+                        project_name=project_name,
+                        model_name=model_name,
+                        stage_name=stage_name,
+                        task_name=task_key,
+                        process_name=process_name,
+                        task_run_id=task_run_id,
+                        job_name=job_name,
+                        job_id=job_id,
+                        job_run_id=job_run_id,
+                        run_status=run_status,
+                        start_time=str(start_time),
+                        end_time=str(end_time),
+                        duration_mins=str(duration_minutes),
+                        error_details=error_details
+                    )
+                    logger.info(
+                        f"Action {action_name} finished | Status={run_status} | Duration={duration_minutes} min"
+                    )
+                    write_to_audit_table(spark, audit_metrics, func_conf, audit_table)
 
-                row_count = len(output_df)
-                col_count = len(output_df.columns)
-
-                mlflow.log_metric("rows", row_count)
-                mlflow.log_metric("columns", col_count)
-                mlflow.log_param("action_name", action_name)
-
-                mlflow.log_artifacts(
-                    str(base_output_dir), artifact_path="preprocessing"
-                )
-
-                run_status = "SUCCESS"
-
-        except Exception as e:
-            logger.exception(f"Action failed: {action_name}")
-            run_status = "FAILED"
-            mlflow.log_param("failure_reason", str(e))
-            raise
-
-        finally:
-            duration = round((datetime.now() - start_time).total_seconds() / 60, 2)
-            logger.info(
-                f"Action {action_name} finished | Status={run_status} | Duration={duration} min"
-            )
-
-    logger.success("All preprocessing actions completed successfully.")
-    return True
+    logger.success("Data preprocessing completed successfully.")
+    return experiment_id
 
 
 if __name__ == "__main__":
-    main()
+    spark = SparkSession.builder.getOrCreate()
+    dbutils = DBUtils(spark)
+    
+    experiment_id = main(spark=spark)
+    dbutils.jobs.taskValues.set(key="experiment_id", value=experiment_id)

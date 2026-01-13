@@ -24,6 +24,8 @@ def load_task_config(
     project_name: str, model_name: str, stage_name: str, env_context: dict, which_file: str
 ) -> dict:
     # Read and render the Jinja-based YAML using env
+    if which_file.startswith("start") or which_file.startswith("end"):
+        stage_name = "common"
     yaml_path = resources.files(
         f"{project_name}.models.{model_name}.configs.{stage_name}"
     ) / which_file
